@@ -53,10 +53,11 @@ class UNetHalf(nn.Module):
         factor = 2 if bilinear else 1
         self.down4 = Down(512, 1024 // factor)
         self.down5 = Down(1024 // factor, 1024 // factor)
-        self.agvPool = torch.nn.AvgPool2d(kernel_size=inputSize // 32)
-        self.outc = OutConv(1024 // factor, n_classes)
-        self.activation = nn.Softmax(dim=0)
-        #self.activation = nn.Sigmoid()
+        #self.avgPool = torch.nn.AvgPool2d(kernel_size=inputSize // 32)
+        self.avgPool = torch.nn.AdaptiveAvgPool2d(1)
+        self.outc = OutConv(1024 // factor, 1) #n_classes)
+        #self.activation = nn.Softmax(dim=1)
+        self.activation = nn.Sigmoid()
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -65,7 +66,7 @@ class UNetHalf(nn.Module):
         x4 = self.down3(x3)
         x5 = self.down4(x4)
         x6 = self.down5(x5)
-        x7 = self.agvPool(x6)
+        x7 = self.avgPool(x6)
         x8 = self.outc(x7)
         return self.activation(x8)
 
