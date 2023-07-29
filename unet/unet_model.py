@@ -4,11 +4,12 @@ from .unet_parts import *
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=False):
+    def __init__(self, n_channels, n_classes, bilinear=False, tanh=True):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
+        self.tanh = tanh
 
         self.inc = DoubleConv(n_channels, 64)
         self.down1 = Down(64, 128)
@@ -22,6 +23,7 @@ class UNet(nn.Module):
         self.up3 = Up(256, 128 // factor, bilinear)
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_classes)
+        self.tanh = torch.nn.Tanh()
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -34,13 +36,12 @@ class UNet(nn.Module):
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
+        if self.tanh:
+            logits = self.tanh(logits)
         return logits
 
-
-
-
 class UNetHalf(nn.Module):
-    def __init__(self, n_channels, n_classes, inputSize=224, bilinear=False):
+    def __init__(self, n_channels, n_classes, bilinear=False):
         super(UNetHalf, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -53,10 +54,8 @@ class UNetHalf(nn.Module):
         factor = 2 if bilinear else 1
         self.down4 = Down(512, 1024 // factor)
         self.down5 = Down(1024 // factor, 1024 // factor)
-        #self.avgPool = torch.nn.AvgPool2d(kernel_size=inputSize // 32)
         self.avgPool = torch.nn.AdaptiveAvgPool2d(1)
-        self.outc = OutConv(1024 // factor, 1) #n_classes)
-        #self.activation = nn.Softmax(dim=1)
+        self.outc = OutConv(1024 // factor, 1)
         self.activation = nn.Sigmoid()
 
     def forward(self, x):
@@ -93,3 +92,72 @@ class PatchDiscriminator(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
+
+class UNet2(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(UNet2, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        bilinear = False
+
+        self.inc = DoubleConv(n_channels, 64)
+        self.down1 = DownNoPool(64, 128)
+        self.down2 = DownNoPool(128, 256)
+        self.down3 = DownNoPool(256, 512)
+        factor = 2 if bilinear else 1
+        self.down4 = DownNoPool(512, 1024 // factor)
+        #self.down5 = Down(1024 // factor, 1024 // factor)
+        self.up1 = Up(1024, 512 // factor, bilinear)
+        self.up2 = Up(512, 256 // factor, bilinear)
+        self.up3 = Up(256, 128 // factor, bilinear)
+        self.up4 = Up(128, 64, bilinear)
+        #self.outc = OutConv(64, n_classes) # Remove this FC layer
+        self.outc = nn.Conv2d(64, n_classes, kernel_size=3, padding=1, bias=False)
+        self.tanh = torch.nn.Tanh()
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x)
+        return self.tanh(logits)
+
+class UNet2Half(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(UNet2Half, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        bilinear = False
+        activation = nn.LeakyReLU()
+
+        self.inc = DoubleConv(n_channels, 64, activation=activation)
+        self.down1 = DownNoPool(64, 128, activation=activation)
+        self.down2 = DownNoPool(128, 256, activation=activation)
+        self.down3 = DownNoPool(256, 512, activation=activation)
+        factor = 2 if bilinear else 1
+        self.down4 = DownNoPool(512, 1024 // factor, activation=activation)
+        #self.down5 = DownNoPool(1024 // factor, 1024 // factor, activation=activation)
+        self.down5 = DownNoPool(1024 // factor, 1, activation=activation)
+        #self.avgPool = torch.nn.AdaptiveAvgPool2d(1)
+        #self.outc = OutConv(1024 // factor, 1)
+        self.flatten = nn.Flatten()
+        self.activation = nn.Sigmoid()
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x6 = self.down5(x5)
+        #x7 = self.avgPool(x6)
+        #x8 = self.outc(x7)
+        x8 = self.flatten(x6)
+        return self.activation(x8)

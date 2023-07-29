@@ -8,17 +8,17 @@ import torch.nn.functional as F
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels, out_channels, mid_channels=None, stride=1, activation=nn.ReLU()):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
         self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False, stride=stride),
             nn.BatchNorm2d(mid_channels),
-            nn.ReLU(), #nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            activation,
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False, stride=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(), #nn.ReLU(inplace=True)
+            activation
         )
 
     def forward(self, x):
@@ -34,6 +34,16 @@ class Down(nn.Module):
             nn.MaxPool2d(2),
             DoubleConv(in_channels, out_channels)
         )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
+
+class DownNoPool(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(self, in_channels, out_channels, activation=nn.ReLU()):
+        super().__init__()
+        self.maxpool_conv = DoubleConv(in_channels, out_channels, stride=2)
 
     def forward(self, x):
         return self.maxpool_conv(x)
@@ -66,7 +76,6 @@ class Up(nn.Module):
         # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
-
 
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
